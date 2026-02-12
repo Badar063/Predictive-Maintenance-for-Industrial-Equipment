@@ -1,0 +1,128 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+
+np.random.seed(42)
+random.seed(42)
+
+def generate_sensor_data():
+    """Generate synthetic sensor readings for 10 machines over 30 days (300 rows)"""
+    machines = [f'M{100+i}' for i in range(1, 11)]
+    start_date = datetime(2024, 1, 1)
+    
+    records = []
+    failure_events = []
+    maintenance_records = []
+    
+    # Initialize machine health states
+    health_state = {m: 100 for m in machines}  # 100 = perfect health, decreases over time
+    last_maintenance = {m: start_date for m in machines}
+    cumulative_runtime = {m: np.random.randint(500, 2000) for m in machines}  # hours
+    
+    for machine in machines:
+        # Random maintenance schedule
+        maintenance_dates = []
+        for _ in range(np.random.randint(2, 5)):
+            maint_day = np.random.randint(5, 25)
+            maint_date = start_date + timedelta(days=maint_day)
+            maintenance_dates.append(maint_date)
+            maintenance_records.append({
+                'machine_id': machine,
+                'maintenance_date': maint_date.strftime('%Y-%m-%d'),
+                'maintenance_type': random.choice(['Preventive', 'Corrective']),
+                'duration_hours': np.random.randint(2, 8),
+                'cost': np.random.randint(500, 3000)
+            })
+        maintenance_dates.sort()
+        
+        # Simulate daily readings
+        for day in range(30):
+            current_date = start_date + timedelta(days=day)
+            
+            # Determine if maintenance occurred today
+            maintenance_today = current_date in maintenance_dates
+            if maintenance_today:
+                health_state[machine] = 100  # Restore health after maintenance
+                last_maintenance[machine] = current_date
+            
+            # Health degradation: increases with time and runtime
+            days_since_maint = (current_date - last_maintenance[machine]).days
+            runtime_today = np.random.uniform(20, 24)  # hours run per day
+            cumulative_runtime[machine] += runtime_today
+            
+            # Health degradation factors
+            wear_factor = cumulative_runtime[machine] * 0.0005
+            days_factor = days_since_maint * 0.8
+            health_degradation = wear_factor + days_factor + np.random.normal(0, 2)
+            health_state[machine] = max(20, health_state[machine] - health_degradation)
+            
+            # Sensor readings correlate with health
+            base_vibration = 0.5 + (100 - health_state[machine]) * 0.03
+            vibration = base_vibration + np.random.normal(0, 0.1)
+            
+            base_temperature = 50 + (100 - health_state[machine]) * 0.4
+            temperature = base_temperature + np.random.normal(0, 1.5)
+            
+            base_pressure = 2.0 + (100 - health_state[machine]) * 0.02
+            pressure = base_pressure + np.random.normal(0, 0.2)
+            
+            rotational_speed = 1500 - (100 - health_state[machine]) * 2 + np.random.normal(0, 20)
+            power_consumption = 100 + (100 - health_state[machine]) * 0.8 + np.random.normal(0, 5)
+            
+            # Record sensor data
+            records.append({
+                'date': current_date.strftime('%Y-%m-%d'),
+                'machine_id': machine,
+                'vibration_mm_s': round(max(0.1, vibration), 2),
+                'temperature_c': round(max(20, temperature), 1),
+                'pressure_bar': round(max(0.5, pressure), 2),
+                'rotational_speed_rpm': round(max(500, rotational_speed), 0),
+                'power_consumption_kw': round(max(50, power_consumption), 1),
+                'cumulative_runtime_hrs': round(cumulative_runtime[machine], 0),
+                'days_since_maintenance': days_since_maint,
+                'health_score': round(health_state[machine], 1)
+            })
+            
+            # Determine failure (5% overall probability, higher when health < 50)
+            if health_state[machine] < 50 and np.random.random() < 0.15:
+                # Failure occurs
+                failure_events.append({
+                    'date': current_date.strftime('%Y-%m-%d'),
+                    'machine_id': machine,
+                    'failure_type': random.choice(['Mechanical', 'Electrical', 'Overheating', 'Vibration']),
+                    'downtime_hours': np.random.randint(4, 48),
+                    'repair_cost': np.random.randint(1000, 10000)
+                })
+                # After failure, health drops further, then maintenance assumed
+                health_state[machine] = 100
+                last_maintenance[machine] = current_date
+                cumulative_runtime[machine] += 2  # small runtime during failure
+    
+    sensor_df = pd.DataFrame(records)
+    maintenance_df = pd.DataFrame(maintenance_records) if maintenance_records else pd.DataFrame()
+    failure_df = pd.DataFrame(failure_events) if failure_events else pd.DataFrame()
+    
+    return sensor_df, maintenance_df, failure_df
+
+def main():
+    import os
+    os.makedirs('data', exist_ok=True)
+    
+    sensor_df, maint_df, fail_df = generate_sensor_data()
+    
+    sensor_df.to_csv('data/sensor_readings.csv', index=False)
+    print(f"Created sensor_readings.csv with {len(sensor_df)} rows")
+    
+    if not maint_df.empty:
+        maint_df.to_csv('data/maintenance_history.csv', index=False)
+        print(f"Created maintenance_history.csv with {len(maint_df)} rows")
+    
+    if not fail_df.empty:
+        fail_df.to_csv('data/failure_events.csv', index=False)
+        print(f"Created failure_events.csv with {len(fail_df)} rows")
+    
+    print("\nDataset creation complete.")
+
+if __name__ == '__main__':
+    main()
